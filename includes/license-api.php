@@ -1,147 +1,185 @@
 <?php
+defined('ABSPATH') or die('No script kiddies please!');
+
 add_action('rest_api_init', function () {
-  register_rest_route('licensemanager/v1', '/activate', [
-    'methods' => 'POST',
-    'callback' => 'lm_api_activate_license',
-    'permission_callback' => '__return_true'
-  ]);
-  register_rest_route('licensemanager/v1', '/validate', [
-    'methods' => 'POST',
-    'callback' => 'lm_api_validate_license',
-    'permission_callback' => '__return_true'
-  ]);
-  register_rest_route('licensemanager/v1', '/renew', [
-    'methods' => 'POST',
-    'callback' => 'lm_api_renew_license',
-    'permission_callback' => '__return_true'
-  ]);
-  register_rest_route('licensemanager/v1', '/user-licenses', [
-    'methods' => 'POST',
-    'callback' => 'lm_api_user_licenses',
-    'permission_callback' => '__return_true'
-  ]);
+    register_rest_route('licensemanager/v1', '/activate', [
+        'methods' => 'POST',
+        'callback' => 'lm_api_activate_license',
+        'permission_callback' => 'lm_api_check_secret_key',
+    ]);
+    register_rest_route('licensemanager/v1', '/validate', [
+        'methods' => 'POST',
+        'callback' => 'lm_api_validate_license',
+        'permission_callback' => 'lm_api_check_secret_key',
+    ]);
+    register_rest_route('licensemanager/v1', '/renew', [
+        'methods' => 'POST',
+        'callback' => 'lm_api_renew_license',
+        'permission_callback' => 'lm_api_check_secret_key',
+    ]);
+    register_rest_route('licensemanager/v1', '/user-licenses', [
+        'methods' => 'POST',
+        'callback' => 'lm_api_get_user_licenses',
+        'permission_callback' => 'lm_api_check_secret_key',
+    ]);
 });
 
-function lm_api_check_origin() {
-  $allowed = array_map('trim', explode("\n", get_option('lm_allowed_origins', '')));
-  $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-  return !$origin || in_array($origin, $allowed);
+// بررسی کلید مخفی
+function lm_api_check_secret_key(WP_REST_Request $request) {
+    $secret_key = get_option('lm_secret_key', '');
+    $passed_key = $request->get_header('X-LM-Secret') ?? $request->get_param('secret_key');
+    return $passed_key === $secret_key;
 }
 
-function lm_api_activate_license($req) {
-  if (!lm_api_check_origin()) return new WP_Error('forbidden', 'دسترسی غیرمجاز', ['status' => 403]);
+// فعالسازی لایسنس
+function lm_api_activate_license(WP_REST_Request $request) {
+    global $wpdb;
+    $activations_table = $wpdb->prefix . 'lm_activation_codes';
 
-  $data = $req->get_json_params();
-  $email = sanitize_email($data['user_email'] ?? '');
-  $product_id = intval($data['product_id'] ?? 0);
-  $system_code = sanitize_text_field($data['system_code'] ?? '');
-  $domain = sanitize_text_field($data['domain'] ?? '');
+    $user_id = intval($request->get_param('user_id'));
+    $product_id = intval($request->get_param('product_id'));
+    $system_code = sanitize_text_field($request->get_param('system_code'));
+    $domain = sanitize_text_field($request->get_param('domain'));
+    $now = current_time('mysql');
 
-  $user = get_user_by('email', $email);
-  if (!$user || !$product_id || !$system_code) return new WP_Error('invalid', 'اطلاعات نامعتبر', ['status' => 400]);
-
-  global $wpdb;
-  $table = $wpdb->prefix . 'license_manager_licenses';
-  $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE user_id=%d AND product_id=%d AND system_code=%s", $user->ID, $product_id, $system_code));
-
-  if ($row) {
-    if ($domain) {
-      $history = json_decode($row->domain_history ?: '[]', true);
-      if (!in_array($domain, $history)) {
-        $history[] = $domain;
-        $wpdb->update($table, ['domain_history' => json_encode($history)], ['id' => $row->id]);
-      }
+    if (!$user_id || !$product_id || !$system_code) {
+        return new WP_REST_Response(['error' => 'Missing parameters'], 400);
     }
-    return [
-      'activation_hash' => $row->activation_hash,
-      'expires_at' => $row->expires_at,
-      'status' => $row->status
-    ];
-  } else {
-    $hash = lm_generate_activation_hash($system_code);
-    $expires = lm_get_expiry_date(lm_get_license_duration($product_id));
-    $created = current_time('mysql');
-    $wpdb->insert($table, [
-      'user_id' => $user->ID,
-      'product_id' => $product_id,
-      'system_code' => $system_code,
-      'activation_hash' => $hash,
-      'created_at' => $created,
-      'expires_at' => $expires,
-      'status' => 'valid',
-      'domain_history' => json_encode($domain ? [$domain] : [])
+
+    $secret_key = get_option('lm_secret_key', '');
+    $activation_code = hash('sha256', $secret_key . $system_code);
+
+    $exists = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $activations_table WHERE user_id=%d AND product_id=%d AND system_code=%s",
+        $user_id, $product_id, $system_code
+    ));
+
+    if ($exists) {
+        if ($exists->status !== 'active') {
+            return new WP_REST_Response(['error' => 'Activation is inactive'], 403);
+        }
+        return new WP_REST_Response([
+            'activation_code' => $exists->activation_code,
+            'expires_at' => $exists->expires_at,
+            'status' => $exists->status,
+        ]);
+    }
+
+    $license = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}lm_licenses WHERE user_id=%d AND product_id=%d",
+        $user_id, $product_id
+    ));
+    if (!$license) {
+        return new WP_REST_Response(['error' => 'License not found'], 404);
+    }
+
+    $expires_at = null;
+    $product_expire = get_post_meta($product_id, '_lm_license_expire_months', true);
+    if ($product_expire) {
+        $expires_at = date('Y-m-d', strtotime("+$product_expire months"));
+    }
+
+    $wpdb->insert($activations_table, [
+        'license_id' => $license->id,
+        'user_id' => $user_id,
+        'product_id' => $product_id,
+        'system_code' => $system_code,
+        'activation_code' => $activation_code,
+        'domain' => $domain,
+        'status' => 'active',
+        'expires_at' => $expires_at,
+        'created_at' => $now,
+        'updated_at' => $now,
     ]);
-    return [
-      'activation_hash' => $hash,
-      'expires_at' => $expires,
-      'status' => 'valid'
-    ];
-  }
+
+    return new WP_REST_Response([
+        'activation_code' => $activation_code,
+        'expires_at' => $expires_at,
+        'status' => 'active',
+    ]);
 }
 
-function lm_api_validate_license($req) {
-  if (!lm_api_check_origin()) return new WP_Error('forbidden', 'دسترسی غیرمجاز', ['status' => 403]);
-  $data = $req->get_json_params();
-  $email = sanitize_email($data['user_email'] ?? '');
-  $product_id = intval($data['product_id'] ?? 0);
-  $system_code = sanitize_text_field($data['system_code'] ?? '');
+// اعتبارسنجی لایسنس
+function lm_api_validate_license(WP_REST_Request $request) {
+    global $wpdb;
+    $activations_table = $wpdb->prefix . 'lm_activation_codes';
 
-  $user = get_user_by('email', $email);
-  if (!$user) return new WP_Error('invalid', 'کاربر یافت نشد');
+    $user_id = intval($request->get_param('user_id'));
+    $product_id = intval($request->get_param('product_id'));
+    $system_code = sanitize_text_field($request->get_param('system_code'));
 
-  global $wpdb;
-  $table = $wpdb->prefix . 'license_manager_licenses';
-  $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE user_id=%d AND product_id=%d AND system_code=%s", $user->ID, $product_id, $system_code));
+    if (!$user_id || !$product_id || !$system_code) {
+        return new WP_REST_Response(['error' => 'Missing parameters'], 400);
+    }
 
-  if (!$row) return new WP_Error('notfound', 'لایسنس وجود ندارد');
-  $expired = strtotime($row->expires_at) < time();
-  return [
-    'status' => $expired ? 'expired' : 'valid',
-    'activation_hash' => $row->activation_hash,
-    'expires_at' => $row->expires_at,
-    'days_remaining' => $expired ? 0 : floor((strtotime($row->expires_at) - time()) / 86400)
-  ];
+    $row = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $activations_table WHERE user_id=%d AND product_id=%d AND system_code=%s AND status='active'",
+        $user_id, $product_id, $system_code
+    ));
+
+    if (!$row) {
+        return new WP_REST_Response(['valid' => false], 200);
+    }
+
+    if ($row->expires_at && strtotime($row->expires_at) < current_time('timestamp')) {
+        return new WP_REST_Response(['valid' => false, 'reason' => 'expired'], 200);
+    }
+
+    return new WP_REST_Response(['valid' => true], 200);
 }
 
-function lm_api_renew_license($req) {
-  if (!lm_api_check_origin()) return new WP_Error('forbidden', 'دسترسی غیرمجاز', ['status' => 403]);
-  $data = $req->get_json_params();
-  $email = sanitize_email($data['user_email'] ?? '');
-  $product_id = intval($data['product_id'] ?? 0);
-  $system_code = sanitize_text_field($data['system_code'] ?? '');
-  $user = get_user_by('email', $email);
+// تمدید لایسنس
+function lm_api_renew_license(WP_REST_Request $request) {
+    global $wpdb;
+    $activations_table = $wpdb->prefix . 'lm_activation_codes';
 
-  global $wpdb;
-  $table = $wpdb->prefix . 'license_manager_licenses';
-  $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE user_id=%d AND product_id=%d AND system_code=%s", $user->ID, $product_id, $system_code));
-  if (!$row) return new WP_Error('notfound', 'لایسنس یافت نشد');
+    $activation_code = sanitize_text_field($request->get_param('activation_code'));
+    $additional_months = intval($request->get_param('months'));
 
-  $new_expiry = lm_get_expiry_date(lm_get_license_duration($product_id));
-  $wpdb->update($table, ['expires_at' => $new_expiry], ['id' => $row->id]);
+    if (!$activation_code || !$additional_months) {
+        return new WP_REST_Response(['error' => 'Missing parameters'], 400);
+    }
 
-  return [
-    'expires_at' => $new_expiry,
-    'status' => 'valid'
-  ];
+    $activation = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $activations_table WHERE activation_code=%s",
+        $activation_code
+    ));
+
+    if (!$activation) {
+        return new WP_REST_Response(['error' => 'Activation code not found'], 404);
+    }
+
+    $new_expiry = $activation->expires_at ? date('Y-m-d', strtotime("+$additional_months months", strtotime($activation->expires_at))) : date('Y-m-d', strtotime("+$additional_months months"));
+
+    $wpdb->update($activations_table, [
+        'expires_at' => $new_expiry,
+        'updated_at' => current_time('mysql'),
+    ], ['id' => $activation->id]);
+
+    return new WP_REST_Response(['message' => 'License renewed', 'new_expiry' => $new_expiry]);
 }
 
-function lm_api_user_licenses($req) {
-  if (!lm_api_check_origin()) return new WP_Error('forbidden', 'دسترسی غیرمجاز', ['status' => 403]);
-  $email = sanitize_email($req->get_param('user_email') ?? '');
-  $user = get_user_by('email', $email);
-  if (!$user) return [];
+// دریافت لیست لایسنس‌های کاربر
+function lm_api_get_user_licenses(WP_REST_Request $request) {
+    global $wpdb;
+    $licenses_table = $wpdb->prefix . 'lm_licenses';
 
-  global $wpdb;
-  $table = $wpdb->prefix . 'license_manager_licenses';
-  $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table WHERE user_id=%d", $user->ID));
-  return array_map(function ($r) {
-    return [
-      'product_id' => $r->product_id,
-      'system_code' => $r->system_code,
-      'activation_hash' => $r->activation_hash,
-      'status' => $r->status,
-      'expires_at' => $r->expires_at,
-      'domain_history' => json_decode($r->domain_history ?: '[]')
-    ];
-  }, $rows);
+    $user_id = intval($request->get_param('user_id'));
+    if (!$user_id) {
+        return new WP_REST_Response(['error' => 'Missing user_id'], 400);
+    }
+
+    $licenses = $wpdb->get_results($wpdb->prepare("SELECT * FROM $licenses_table WHERE user_id = %d", $user_id));
+    $result = [];
+    foreach ($licenses as $license) {
+        $result[] = [
+            'id' => $license->id,
+            'product_id' => $license->product_id,
+            'license_code' => $license->license_code,
+            'status' => $license->status,
+            'created_at' => $license->created_at,
+            'updated_at' => $license->updated_at,
+        ];
+    }
+    return $result;
 }

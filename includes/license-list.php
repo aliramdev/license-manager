@@ -1,67 +1,45 @@
 <?php
-function lm_license_generator_page() {
-  global $wpdb;
-  $message = '';
+defined('ABSPATH') or die('No script kiddies please!');
 
-  if (isset($_POST['generate_license'])) {
-    $email = sanitize_email($_POST['user_email']);
-    $product_id = intval($_POST['product_id']);
-    $system_code = sanitize_text_field($_POST['system_code']);
-    $domain = sanitize_text_field($_POST['domain']);
+function lm_render_license_list_page() {
+    global $wpdb;
+    $licenses_table = $wpdb->prefix . 'lm_licenses';
+    $users = lm_get_users_list();
+    $products = lm_get_products_list();
 
-    $user = get_user_by('email', $email);
-    if (!$user) {
-      $message = '❌ کاربر یافت نشد.';
-    } else {
-      $table = $wpdb->prefix . 'license_manager_licenses';
-      $existing = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE user_id=%d AND product_id=%d AND system_code=%s", $user->ID, $product_id, $system_code));
+    $licenses = $wpdb->get_results("SELECT * FROM $licenses_table ORDER BY created_at DESC LIMIT 50");
 
-      if ($existing) {
-        $message = '⚠️ این لایسنس قبلاً وجود دارد.';
-      } else {
-        $hash = lm_generate_activation_hash($system_code);
-        $expires = lm_get_expiry_date(lm_get_license_duration($product_id));
-        $created = current_time('mysql');
-        $wpdb->insert($table, [
-          'user_id' => $user->ID,
-          'product_id' => $product_id,
-          'system_code' => $system_code,
-          'activation_hash' => $hash,
-          'created_at' => $created,
-          'expires_at' => $expires,
-          'status' => 'valid',
-          'domain_history' => json_encode($domain ? [$domain] : [])
-        ]);
-        $message = '✅ لایسنس با موفقیت ایجاد شد.';
-      }
-    }
-  }
-
-  echo '<div class="wrap">';
-  echo '<h2>➕ تولید لایسنس جدید</h2>';
-  if ($message) echo "<p><strong>$message</strong></p>";
-  ?>
-  <form method="post">
-    <table class="form-table">
-      <tr>
-        <th><label for="user_email">ایمیل کاربر</label></th>
-        <td><input type="email" name="user_email" required></td>
-      </tr>
-      <tr>
-        <th><label for="product_id">شناسه محصول (ID)</label></th>
-        <td><input type="number" name="product_id" required></td>
-      </tr>
-      <tr>
-        <th><label for="system_code">کد سیستم</label></th>
-        <td><input type="text" name="system_code" required></td>
-      </tr>
-      <tr>
-        <th><label for="domain">دامنه (اختیاری)</label></th>
-        <td><input type="text" name="domain"></td>
-      </tr>
-    </table>
-    <input type="submit" name="generate_license" class="button button-primary" value="🎫 تولید لایسنس">
-  </form>
-  <?php
-  echo '</div>';
+    ?>
+    <div class="wrap container mt-4">
+        <h1><i class="fas fa-list"></i> لیست لایسنس‌ها</h1>
+        <table class="table table-striped table-bordered">
+            <thead>
+                <tr>
+                    <th>شناسه</th>
+                    <th>کاربر</th>
+                    <th>محصول</th>
+                    <th>کد لایسنس</th>
+                    <th>وضعیت</th>
+                    <th>تاریخ ایجاد</th>
+                    <th>عملیات</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($licenses as $license): ?>
+                <tr>
+                    <td><?php echo esc_html($license->id); ?></td>
+                    <td><?php echo esc_html($users[$license->user_id] ?? ''); ?></td>
+                    <td><?php echo esc_html($products[$license->product_id] ?? ''); ?></td>
+                    <td><code><?php echo esc_html($license->license_code); ?></code></td>
+                    <td><?php echo esc_html($license->status); ?></td>
+                    <td><?php echo esc_html($license->created_at); ?></td>
+                    <td>
+                        <a href="<?php echo wp_nonce_url(admin_url('admin-post.php?action=lm_delete_license&id=' . intval($license->id)), 'lm_delete_license'); ?>" class="btn btn-danger btn-sm" onclick="return confirm('آیا مطمئن هستید می‌خواهید حذف کنید؟');"><i class="fas fa-trash-alt"></i></a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
 }

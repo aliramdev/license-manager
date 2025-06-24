@@ -1,0 +1,93 @@
+/* admin-style.css */
+
+/* بدنه پنل مدیریت */
+body {
+    font-family: 'Vazir', Tahoma, Arial, sans-serif;
+    background-color: #f9f9f9;
+    color: #333;
+}
+
+/* استایل جدول */
+table.wp-list-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+table.wp-list-table th,
+table.wp-list-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #ddd;
+}
+
+table.wp-list-table th {
+    background-color: #0073aa;
+    color: #fff;
+    text-align: left;
+}
+
+/* دکمه‌ها */
+button,
+input[type="submit"],
+a.button {
+    background-color: #0073aa;
+    border: none;
+    color: white;
+    padding: 8px 14px;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 3px;
+    font-weight: 600;
+    transition: background-color 0.3s ease;
+}
+
+button:hover,
+input[type="submit"]:hover,
+a.button:hover {
+    background-color: #005177;
+}
+
+/* فرم‌ها */
+input[type="text"],
+input[type="email"],
+select,
+textarea {
+    width: 100%;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 14px;
+}
+
+/* ریسپانسیو */
+@media (max-width: 768px) {
+    table.wp-list-table, 
+    table.wp-list-table thead, 
+    table.wp-list-table tbody, 
+    table.wp-list-table th, 
+    table.wp-list-table td, 
+    table.wp-list-table tr {
+        display: block;
+    }
+    
+    table.wp-list-table tr {
+        margin-bottom: 15px;
+        border-bottom: 2px solid #ddd;
+    }
+    
+    table.wp-list-table td {
+        padding-left: 50%;
+        position: relative;
+        text-align: right;
+    }
+    
+    table.wp-list-table td::before {
+        position: absolute;
+        left: 15px;
+        width: 45%;
+        white-space: nowrap;
+        font-weight: 600;
+        content: attr(data-label);
+        text-align: left;
+    }
+}

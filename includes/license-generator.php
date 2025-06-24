@@ -1,58 +1,80 @@
 <?php
-function lm_license_list_page() {
-  global $wpdb;
-  $table = $wpdb->prefix . 'license_manager_licenses';
+defined('ABSPATH') or die('No script kiddies please!');
 
-  $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
-  $query = "SELECT * FROM $table WHERE 1=1";
-  if ($search) {
-    $query .= $wpdb->prepare(" AND (system_code LIKE %s OR domain_history LIKE %s)", "%$search%", "%$search%");
-  }
-  $results = $wpdb->get_results($query);
+function lm_generate_license_code() {
+    return wp_generate_password(20, false, false);
+}
 
-  echo '<div class="wrap">';
-  echo '<h2>📄 لیست لایسنس‌ها</h2>';
-  echo '<form method="get">
-    <input type="hidden" name="page" value="license_manager_list">
-    <input type="search" name="s" value="' . esc_attr($search) . '" placeholder="جستجو بر اساس کد سیستم یا دامنه">
-    <input type="submit" class="button" value="🔍 جستجو">
-  </form><br>';
+function lm_create_license($user_id, $product_id) {
+    global $wpdb;
+    $licenses_table = $wpdb->prefix . 'lm_licenses';
 
-  if ($results) {
-    echo '<table class="widefat striped">
-      <thead><tr>
-        <th>ایمیل</th><th>محصول</th><th>کد سیستم</th><th>هش</th><th>دامنه‌ها</th><th>انقضا</th><th>وضعیت</th><th>عملیات</th>
-      </tr></thead><tbody>';
-    foreach ($results as $row) {
-      $user = get_user_by('id', $row->user_id);
-      $domains = implode('<br>', json_decode($row->domain_history ?: '[]', true));
-      echo '<tr>
-        <td>' . esc_html($user ? $user->user_email : '-') . '</td>
-        <td>' . esc_html($row->product_id) . '</td>
-        <td>' . esc_html($row->system_code) . '</td>
-        <td style="font-family:monospace;direction:ltr">' . esc_html(substr($row->activation_hash, 0, 24)) . '...</td>
-        <td>' . $domains . '</td>
-        <td>' . esc_html($row->expires_at) . '</td>
-        <td>' . esc_html($row->status) . '</td>
-        <td>
-          <form method="post" style="display:inline-block">
-            <input type="hidden" name="delete_license_id" value="' . intval($row->id) . '">
-            <button class="button button-small" onclick="return confirm(\'حذف این لایسنس؟\')">🗑 حذف</button>
-          </form>
-        </td>
-      </tr>';
+    $code = lm_generate_license_code();
+    $now = current_time('mysql');
+
+    $wpdb->insert($licenses_table, [
+        'user_id' => $user_id,
+        'product_id' => $product_id,
+        'license_code' => $code,
+        'status' => 'active',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    return $wpdb->insert_id;
+}
+
+function lm_render_license_generator_page() {
+    if (!current_user_can('manage_options')) wp_die('You do not have sufficient permissions.');
+
+    $users = lm_get_users_list();
+    $products = lm_get_products_list();
+    $message = '';
+
+    if (isset($_POST['lm_generate_license'])) {
+        check_admin_referer('lm_generate_license_nonce');
+
+        $user_id = intval($_POST['user_id'] ?? 0);
+        $product_id = intval($_POST['product_id'] ?? 0);
+
+        if (!$user_id || !$product_id) {
+            $message = '<div class="alert alert-danger">لطفاً کاربر و محصول را انتخاب کنید.</div>';
+        } else {
+            $license_id = lm_create_license($user_id, $product_id);
+            if ($license_id) {
+                $message = '<div class="alert alert-success">لایسنس با موفقیت ایجاد شد.</div>';
+            } else {
+                $message = '<div class="alert alert-danger">خطا در ایجاد لایسنس.</div>';
+            }
+        }
     }
-    echo '</tbody></table>';
-  } else {
-    echo '<p>هیچ لایسنسی یافت نشد.</p>';
-  }
-  echo '</div>';
 
-  // حذف لایسنس
-  if (isset($_POST['delete_license_id'])) {
-    $del_id = intval($_POST['delete_license_id']);
-    $wpdb->delete($table, ['id' => $del_id]);
-    echo '<div class="updated"><p>لایسنس حذف شد.</p></div>';
-    echo '<meta http-equiv="refresh" content="1">';
-  }
+    ?>
+    <div class="wrap container mt-4">
+        <h1><i class="fas fa-plus-circle"></i> تولید لایسنس جدید</h1>
+        <?php echo $message; ?>
+        <form method="post" action="">
+            <?php wp_nonce_field('lm_generate_license_nonce'); ?>
+            <div class="mb-3">
+                <label for="user_id" class="form-label">انتخاب کاربر</label>
+                <select name="user_id" id="user_id" class="form-select" required>
+                    <option value="">-- انتخاب کاربر --</option>
+                    <?php foreach ($users as $id => $name) : ?>
+                    <option value="<?php echo esc_attr($id); ?>"><?php echo esc_html($name); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="product_id" class="form-label">انتخاب محصول</label>
+                <select name="product_id" id="product_id" class="form-select" required>
+                    <option value="">-- انتخاب محصول --</option>
+                    <?php foreach ($products as $id => $title) : ?>
+                    <option value="<?php echo esc_attr($id); ?>"><?php echo esc_html($title); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button type="submit" name="lm_generate_license" class="btn btn-success"><i class="fas fa-check"></i> تولید</button>
+        </form>
+    </div>
+    <?php
 }
