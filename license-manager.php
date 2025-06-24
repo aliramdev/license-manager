@@ -1,10 +1,10 @@
-// فایل license-manager.php
 <?php
 /*
 Plugin Name: مدیریت لایسنس
-Description: افزونه اختصاصی برای مدیریت لایسنس محصولات ووکامرس
+* Description: افزونه اختصاصی برای مدیریت لایسنس محصولات ووکامرس. ساخته شده توسط علی رمضانی از شرکت زرین‌افزار.
 Version: 1.0
-Author: شما
+Author: علی رمضانی - zarinafzar.com
+* Text Domain: license-manager
 */
 
 // بارگذاری فایل‌ها
