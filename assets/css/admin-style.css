@@ -1,93 +1,95 @@
-/* admin-style.css */
+/* استایل عمومی جعبه‌های داخلی صفحات مدیریت */
+.lm-box {
+    background: #fff;
+    padding: 2rem;
+    margin-top: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
 
-/* بدنه پنل مدیریت */
-body {
-    font-family: 'Vazir', Tahoma, Arial, sans-serif;
-    background-color: #f9f9f9;
+/* عنوان‌های بخش‌ها */
+.lm-header {
+    font-size: 1.5rem;
+    margin-bottom: 1.25rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     color: #333;
 }
 
-/* استایل جدول */
-table.wp-list-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-table.wp-list-table th,
-table.wp-list-table td {
-    padding: 12px 15px;
-    border-bottom: 1px solid #ddd;
-}
-
-table.wp-list-table th {
-    background-color: #0073aa;
-    color: #fff;
-    text-align: left;
-}
-
-/* دکمه‌ها */
-button,
-input[type="submit"],
-a.button {
-    background-color: #0073aa;
-    border: none;
-    color: white;
-    padding: 8px 14px;
-    text-align: center;
-    cursor: pointer;
-    border-radius: 3px;
-    font-weight: 600;
-    transition: background-color 0.3s ease;
-}
-
-button:hover,
-input[type="submit"]:hover,
-a.button:hover {
-    background-color: #005177;
+/* آیکن‌های عنوان */
+.lm-header i {
+    color: #0d6efd;
 }
 
 /* فرم‌ها */
-input[type="text"],
-input[type="email"],
-select,
-textarea {
+.lm-form label {
+    font-weight: 500;
+    margin-top: 1rem;
+}
+
+.lm-form input[type="text"],
+.lm-form input[type="email"],
+.lm-form input[type="password"],
+.lm-form select,
+.lm-form textarea {
     width: 100%;
-    padding: 8px 10px;
-    margin-bottom: 12px;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.25rem;
     border: 1px solid #ccc;
-    border-radius: 3px;
-    font-size: 14px;
+    border-radius: 8px;
+}
+
+/* دکمه‌ها */
+.lm-btn {
+    margin-top: 1.5rem;
+    padding: 0.6rem 1.5rem;
+    border-radius: 8px;
+    border: none;
+    background-color: #0d6efd;
+    color: #fff;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.lm-btn:hover {
+    background-color: #0b5ed7;
+}
+
+/* جدول‌ها */
+.lm-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    background-color: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.lm-table th,
+.lm-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.lm-table thead {
+    background-color: #f8f9fa;
+    font-weight: bold;
+}
+
+.lm-table tbody tr:hover {
+    background-color: #f1f3f5;
 }
 
 /* ریسپانسیو */
 @media (max-width: 768px) {
-    table.wp-list-table, 
-    table.wp-list-table thead, 
-    table.wp-list-table tbody, 
-    table.wp-list-table th, 
-    table.wp-list-table td, 
-    table.wp-list-table tr {
-        display: block;
+    .lm-box {
+        padding: 1rem;
     }
-    
-    table.wp-list-table tr {
-        margin-bottom: 15px;
-        border-bottom: 2px solid #ddd;
-    }
-    
-    table.wp-list-table td {
-        padding-left: 50%;
-        position: relative;
-        text-align: right;
-    }
-    
-    table.wp-list-table td::before {
-        position: absolute;
-        left: 15px;
-        width: 45%;
-        white-space: nowrap;
-        font-weight: 600;
-        content: attr(data-label);
-        text-align: left;
+
+    .lm-header {
+        font-size: 1.2rem;
     }
 }

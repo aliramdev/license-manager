@@ -1,71 +1,82 @@
 <?php
-/*
-Plugin Name: License Manager
-Plugin URI: https://zarinafzar.com
-Description: افزونه مدیریت لایسنس محصولات ووکامرس با پشتیبانی کامل از API و امنیت بالا.
-Version: 1.0
-Author: علی رمضانی
-Author URI: https://aliram.ir
-License: GPLv2 or later
-Text Domain: license-manager
-*/
+/**
+ * Plugin Name: License Manager
+ * Plugin URI: https://zarinafzar.com
+ * Description: A flexible license management plugin to generate, validate, and manage activation codes for WooCommerce products with full REST API support.
+ * Version: 1.0
+ * Author: Ali Ramezani (Zarinafzar)
+ * Author URI: https://aliram.ir
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: license-manager
+ * Domain Path: /languages
+ */
 
-defined('ABSPATH') or die('No script kiddies please!');
+defined('ABSPATH') || exit;
 
-define('LM_PLUGIN_DIR', plugin_dir_path(__FILE__));
+// تعریف ثابت‌ها برای مسیرها
+define('LM_PLUGIN_PATH', plugin_dir_path(__FILE__));
+define('LM_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-require_once LM_PLUGIN_DIR . 'includes/functions.php';
-require_once LM_PLUGIN_DIR . 'includes/license-api.php';
-require_once LM_PLUGIN_DIR . 'includes/license-generator.php';
-require_once LM_PLUGIN_DIR . 'includes/license-list.php';
-require_once LM_PLUGIN_DIR . 'includes/license-activation-list.php';
-require_once LM_PLUGIN_DIR . 'includes/user-registration-api.php';
-require_once LM_PLUGIN_DIR . 'includes/settings-page.php';
+// بررسی نصب بودن ووکامرس
+add_action('plugins_loaded', function () {
+    if (!class_exists('WooCommerce')) {
+        add_action('admin_notices', function () {
+            echo '<div class="notice notice-error"><p><strong>License Manager:</strong> افزونه ووکامرس باید نصب و فعال باشد.</p></div>';
+        });
+        return;
+    }
 
-// افزودن منوهای مدیریت
-add_action('admin_menu', function () {
-    add_menu_page('مدیریت لایسنس', 'مدیریت لایسنس', 'manage_options', 'lm_license_list', 'lm_render_license_list_page', 'dashicons-admin-network', 25);
-    add_submenu_page('lm_license_list', 'کدهای فعالسازی', 'کدهای فعالسازی', 'manage_options', 'lm_activation_list', 'lm_render_activation_list_page');
-    add_submenu_page('lm_license_list', 'تنظیمات', 'تنظیمات', 'manage_options', 'lm_settings', 'lm_render_settings_page');
+    // بارگذاری فایل‌های اصلی
+    require_once LM_PLUGIN_PATH . 'includes/enqueue.php';
+    require_once LM_PLUGIN_PATH . 'includes/functions.php';
+    require_once LM_PLUGIN_PATH . 'includes/license-generator.php';
+    require_once LM_PLUGIN_PATH . 'includes/license-api.php';
+    require_once LM_PLUGIN_PATH . 'includes/license-hooks.php';
+    require_once LM_PLUGIN_PATH . 'includes/user-registration.php';
+    require_once LM_PLUGIN_PATH . 'includes/woocommerce-hooks.php';
+
+    // بارگذاری صفحات مدیریت
+    require_once LM_PLUGIN_PATH . 'templates/admin-settings.php';
+    require_once LM_PLUGIN_PATH . 'templates/admin-user-registration.php';
+    require_once LM_PLUGIN_PATH . 'templates/admin-license-list.php';
+    require_once LM_PLUGIN_PATH . 'templates/admin-activation-codes.php';
+
+    // ایجاد جدول‌های لازم در نصب افزونه
+    register_activation_hook(__FILE__, 'lm_create_plugin_tables');
+
+    // بارگذاری ترجمه‌ها در صورت نیاز
+    load_plugin_textdomain('license-manager', false, dirname(plugin_basename(__FILE__)) . '/languages');
 });
 
-// فعال‌سازی و ساخت جداول دیتابیس
-register_activation_hook(__FILE__, function () {
+// ساخت جدول‌های لازم در نصب اولیه افزونه
+function lm_create_plugin_tables() {
     global $wpdb;
 
     $charset_collate = $wpdb->get_charset_collate();
 
     $licenses_table = $wpdb->prefix . 'lm_licenses';
-    $activations_table = $wpdb->prefix . 'lm_activation_codes';
+    $activation_table = $wpdb->prefix . 'lm_activation_codes';
 
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
     $sql1 = "CREATE TABLE IF NOT EXISTS $licenses_table (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         user_id BIGINT UNSIGNED NOT NULL,
         product_id BIGINT UNSIGNED NOT NULL,
-        license_code VARCHAR(255) NOT NULL,
-        status VARCHAR(50) NOT NULL DEFAULT 'active',
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        PRIMARY KEY (id)
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) $charset_collate;";
 
-    $sql2 = "CREATE TABLE IF NOT EXISTS $activations_table (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    $sql2 = "CREATE TABLE IF NOT EXISTS $activation_table (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         license_id BIGINT UNSIGNED NOT NULL,
-        user_id BIGINT UNSIGNED NOT NULL,
-        product_id BIGINT UNSIGNED NOT NULL,
         system_code VARCHAR(255) NOT NULL,
-        activation_code VARCHAR(255) NOT NULL,
-        domain VARCHAR(255) DEFAULT '',
-        status VARCHAR(50) NOT NULL DEFAULT 'active',
-        expires_at DATE DEFAULT NULL,
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        PRIMARY KEY (id)
+        activation_hash VARCHAR(255) NOT NULL,
+        domain VARCHAR(255),
+        expires_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) $charset_collate;";
 
     dbDelta($sql1);
     dbDelta($sql2);
-});
+}
