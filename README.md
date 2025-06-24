@@ -60,4 +60,54 @@ Response:
 }
 ```
 
+### Validate License
+
+- URL: `/validate`  
+- Method: POST  
+- Payload:
+```json
+{
+  "user_email": "user@example.com",
+  "product_id": 123,
+  "system_code": "UNIQUE_SYSTEM_ID"
+}
+
+```
+
+Response:
+```json
+{
+  "status": "valid",
+  "activation_hash": "abc123def456...",
+  "expires_at": "2025-12-31 23:59:59",
+  "days_remaining": 120
+}
+
+```
+
+### Renew License
+
+- URL: `/renew`  
+- Method: POST  
+- Payload:
+```json
+{
+  "user_email": "user@example.com",
+  "product_id": 123,
+  "system_code": "UNIQUE_SYSTEM_ID"
+}
+
+
+```
+
+Response:
+```json
+{
+  "expires_at": "2026-12-31 23:59:59",
+  "status": "valid"
+}
+
+
+```
+
 
