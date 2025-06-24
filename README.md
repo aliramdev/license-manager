@@ -49,14 +49,15 @@ Base URL: `/wp-json/licensemanager/v1/`
   "system_code": "UNIQUE_SYSTEM_ID",
   "domain": "example.com" // optional
 }
-
+```
 
 Response:
+```json
 {
   "activation_hash": "abc123def456...",
   "expires_at": "2025-12-31 23:59:59",
   "status": "valid"
 }
-
+```
 
 
