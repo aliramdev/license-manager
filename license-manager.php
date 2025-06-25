@@ -34,7 +34,7 @@ require_once LM_PLUGIN_PATH . 'includes/date-format.php';
 
 // Admin Menu
 add_action('admin_menu', function () {
-    add_menu_page('License Manager', 'مدیریت لایسنس', 'manage_options', 'lm_license_list', function () {
+    add_menu_page('License Manager', 'لیست لایسنس‌ها', 'manage_options', 'lm_license_list', function () {
         include LM_PLUGIN_PATH . 'templates/license-list-template.php';
     }, 'dashicons-admin-network');
 
@@ -46,12 +46,8 @@ add_action('admin_menu', function () {
         include LM_PLUGIN_PATH . 'templates/license-activation-generator-template.php';
     });
 
-    add_submenu_page('lm_license_list', 'کدهای فعالسازی', 'کدهای فعالسازی', 'manage_options', 'lm_activation_list', function () {
+    add_submenu_page('lm_license_list', 'لیست کدهای فعالسازی', 'لیست کدهای فعالسازی', 'manage_options', 'lm_activation_list', function () {
         include LM_PLUGIN_PATH . 'templates/license-activation-list-template.php';
-    });
-
-    add_submenu_page('lm_license_list', 'ثبت نام کاربر', 'ثبت نام کاربر', 'manage_options', 'lm_user_register', function () {
-        include LM_PLUGIN_PATH . 'templates/admin-user-registration.php';
     });
 
     add_submenu_page('lm_license_list', 'تنظیمات', 'تنظیمات', 'manage_options', 'lm_settings', function () {

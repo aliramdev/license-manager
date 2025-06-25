@@ -79,3 +79,4 @@ add_action('wp_ajax_lm_get_user_licenses', function () {
 
     wp_send_json_success($data);
 });
+

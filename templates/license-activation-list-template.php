@@ -1,7 +1,7 @@
 <?php
 defined('ABSPATH') || exit;
+require_once plugin_dir_path(__FILE__) . '/../includes/jdf.php';
 
-// دریافت کدهای فعالسازی
 global $wpdb;
 $table_name = $wpdb->prefix . 'lm_activation_codes';
 
@@ -12,6 +12,24 @@ $results = $wpdb->get_results("
     LEFT JOIN {$wpdb->prefix}posts p ON p.ID = ac.product_id
     ORDER BY ac.created_at DESC
 ");
+
+
+if (isset($_POST['lm_action']) && $_POST['lm_action'] === 'delete_activation_code') {
+    global $wpdb;
+    $activation_id = intval($_POST['activation_id'] ?? 0);
+
+    if ($activation_id > 0) {
+        $deleted = $wpdb->delete($wpdb->prefix . 'lm_activation_codes', ['id' => $activation_id]);
+        if ($deleted) {
+            echo '<div class="notice notice-success"><p>کد فعال‌سازی با موفقیت حذف شد.</p></div>';
+        } else {
+            echo '<div class="notice notice-error"><p>خطا در حذف کد فعال‌سازی.</p></div>';
+        }
+    } else {
+        echo '<div class="notice notice-error"><p>شناسه معتبر نیست.</p></div>';
+    }
+}
+
 ?>
 
 <div class="wrap">
@@ -34,15 +52,27 @@ $results = $wpdb->get_results("
             <?php if ($results): ?>
                 <?php foreach ($results as $row): ?>
                     <tr>
-                        <td><?= esc_html($row->display_name); ?></td>
+                        <td>
+                            <a href="#" class="view-user-info" data-user-id="<?= esc_attr($row->user_id); ?>">
+                                <?= esc_html($row->display_name); ?>
+                            </a>
+                        </td>
                         <td><?= esc_html($row->product_name); ?></td>
-                        <td><code><?= esc_html($row->system_code); ?></code></td>
-                        <td><code><?= esc_html($row->activation_code); ?></code></td>
+                        <td>
+                            <span class="copyable" data-full="<?= esc_attr($row->system_code); ?>">
+                                <?= esc_html(substr($row->system_code, 0, 5)) . '...' . substr($row->system_code, -4); ?>
+                            </span>
+                        </td>
+                        <td>
+                            <span class="copyable" data-full="<?= esc_attr($row->activation_code); ?>">
+                                <?= esc_html(substr($row->activation_code, 0, 5)) . '...' . substr($row->activation_code, -4); ?>
+                            </span>
+                        </td>
                         <td><?= esc_html($row->domain); ?></td>
-                        <td><?= date('Y-m-d', strtotime($row->expires_at)); ?></td>
+                        <td><?= $row->expires_at ? jdate('Y/m/d', strtotime($row->expires_at)) : '---'; ?></td>
                         <td>
                             <?php
-                                $expired = strtotime($row->expires_at) < time();
+                                $expired = $row->expires_at && strtotime($row->expires_at) < time();
                                 echo $expired ? '<span class="badge bg-danger">منقضی</span>' : '<span class="badge bg-success">معتبر</span>';
                             ?>
                         </td>
@@ -61,3 +91,78 @@ $results = $wpdb->get_results("
         </tbody>
     </table>
 </div>
+
+<!-- Modal -->
+<div class="modal fade" id="userInfoModal" tabindex="-1" aria-labelledby="userInfoModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="userInfoModalLabel">مشخصات کاربر</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <div class="modal-body" id="userInfoContent">
+        در حال بارگذاری...
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.copyable').forEach(function (el) {
+        el.style.cursor = 'pointer';
+        el.title = 'برای کپی کلیک کنید';
+
+        el.addEventListener('click', function () {
+            const text = el.getAttribute('data-full');
+            navigator.clipboard.writeText(text).then(() => {
+                el.innerHTML = '✅ کپی شد';
+                setTimeout(() => {
+                    const original = text.substring(0, 5) + '...' + text.slice(-4);
+                    el.innerHTML = original;
+                }, 1500);
+            }).catch(() => {
+                alert('کپی به کلیپ‌بورد ناموفق بود');
+            });
+        });
+    });
+});
+</script>
+
+<script>
+     
+jQuery(document).ready(function($) {
+    $('.view-user-info').on('click', function(e) {
+        e.preventDefault();
+        const userId = $(this).data('user-id');  // گرفتن شناسه کاربر
+
+        $('#userInfoContent').html('در حال بارگذاری...'); // نمایش در حال بارگذاری
+        $('#userInfoModal').modal('show');  // نمایش مودال
+
+        $.ajax({
+            url: "<?= admin_url('admin-ajax.php'); ?>",  // این متغیر باید در صفحه شما به درستی تنظیم شود
+            method: 'POST',
+            data: {
+                action: 'lm_get_user_info',
+                user_id: userId,
+                _ajax_nonce: '<?= wp_create_nonce('lm_user_info_nonce'); ?>'  // nonce به درستی استفاده شود
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('#userInfoContent').html(`
+                        <p><strong>نام:</strong> ${response.data.display_name}</p>
+                        <p><strong>ایمیل:</strong> ${response.data.email}</p>
+                        <p><strong>تلفن:</strong> ${response.data.phone || '—'}</p>
+                    `);
+                } else {
+                    $('#userInfoContent').html('کاربر یافت نشد.');
+                }
+            },
+            error: function() {
+                $('#userInfoContent').html('خطا در دریافت اطلاعات.');
+            }
+        });
+    });
+});
+</script>
+
