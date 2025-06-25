@@ -2,6 +2,7 @@
 defined('ABSPATH') || exit;
 
 $users = get_users(['fields' => ['ID', 'display_name', 'user_email']]);
+$nonce = wp_create_nonce('lm_get_user_licenses_nonce');
 ?>
 
 <div class="wrap">
@@ -50,14 +51,19 @@ $users = get_users(['fields' => ['ID', 'display_name', 'user_email']]);
 
 <script>
 function loadUserLicenses(userId) {
-    if (!userId) return;
+    if (!userId) {
+        const select = document.getElementById('license_id');
+        select.innerHTML = '<option value="">لطفاً ابتدا کاربر را انتخاب کنید</option>';
+        return;
+    }
 
     jQuery.ajax({
         url: ajaxurl,
         method: 'POST',
         data: {
             action: 'lm_get_user_licenses',
-            user_id: userId
+            user_id: userId,
+            _ajax_nonce: '<?= $nonce ?>'
         },
         success: function (response) {
             const select = document.getElementById('license_id');
@@ -74,6 +80,10 @@ function loadUserLicenses(userId) {
                 opt.textContent = 'لایسنسی یافت نشد';
                 select.appendChild(opt);
             }
+        },
+        error: function (xhr, status, error) {
+            alert('خطا در دریافت لیست لایسنس‌ها: ' + error);
+            console.error(xhr.responseText);
         }
     });
 }

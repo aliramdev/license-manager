@@ -1,62 +1,138 @@
 <?php
 defined('ABSPATH') || exit;
-
 global $wpdb;
 $table_name = $wpdb->prefix . 'lm_licenses';
-$licenses = $wpdb->get_results("SELECT * FROM {$table_name} ORDER BY id DESC");
+$results = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC");
+
+$nonce_toggle = wp_create_nonce('lm_toggle_status_nonce');
+$nonce_delete = wp_create_nonce('lm_delete_license_nonce');
+
+// بررسی زبان فارسی و بارگذاری jdf
+$is_fa = strpos(get_locale(), 'fa') === 0;
+if ($is_fa && !function_exists('jdate')) {
+    require_once LM_PLUGIN_PATH . 'includes/jdf.php';
+}
 ?>
 
-<div class="wrap">
-    <h1 class="lm-header"><i class="fas fa-list"></i> لیست لایسنس‌ها</h1>
+<div class="container mt-4">
+    <h2><i class="fa fa-key"></i> لیست لایسنس‌ها</h2>
 
-    <div class="table-responsive">
-        <table class="table table-bordered table-striped table-hover align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>#</th>
-                    <th>کاربر</th>
-                    <th>محصول</th>
-                    <th>کد لایسنس</th>
-                    <th>تاریخ</th>
-                    <th>وضعیت</th>
-                    <th>عملیات</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (count($licenses)): ?>
-                    <?php foreach ($licenses as $index => $license): ?>
-                        <?php
-                            $user_info = get_userdata($license->user_id);
-                            $product = wc_get_product($license->product_id);
-                        ?>
-                        <tr>
-                            <td><?= $index + 1 ?></td>
-                            <td><?= esc_html($user_info ? $user_info->display_name : '—') ?></td>
-                            <td><?= esc_html($product ? $product->get_name() : '—') ?></td>
-                            <td><code><?= esc_html($license->license_key) ?></code></td>
-                            <td><?= esc_html(date('Y-m-d', strtotime($license->created_at))) ?></td>
-                            <td>
-                                <?php if ($license->is_active): ?>
-                                    <span class="badge bg-success">فعال</span>
-                                <?php else: ?>
-                                    <span class="badge bg-secondary">غیرفعال</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <form method="post" style="display:inline-block;" onsubmit="return confirm('آیا مطمئن هستید؟');">
-                                    <input type="hidden" name="lm_action" value="delete_license">
-                                    <input type="hidden" name="license_id" value="<?= esc_attr($license->id) ?>">
-                                    <button type="submit" class="btn btn-sm btn-danger">
-                                        <i class="fas fa-trash-alt"></i> حذف
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <tr><td colspan="7" class="text-center text-muted">لایسنسی یافت نشد.</td></tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
+    <table class="table table-striped table-bordered mt-3" id="licenses-table">
+        <thead class="table-dark">
+            <tr>
+                <th>کد لایسنس</th>
+                <th>کاربر</th>
+                <th>محصول</th>
+                <th>تاریخ تولید</th>
+                <th>تاریخ انقضا</th>
+                <th>وضعیت فعال</th>
+                <th>وضعیت اعتبار</th>
+                <th>عملیات</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($results as $row): 
+            $user = get_userdata($row->user_id);
+            $product = get_the_title($row->product_id);
+            $license_short = substr($row->license_code, 0, 5) . '...' . substr($row->license_code, -5);
+
+            // فقط تاریخ (بدون ساعت)
+            $created_date = $is_fa ? jdate('Y/m/d', strtotime($row->created_at)) : date('Y/m/d', strtotime($row->created_at));
+
+            if (!empty($row->expiry_date)) {
+                $expiry_ts = strtotime($row->expiry_date);
+                $expire_date = $is_fa ? jdate('Y/m/d', $expiry_ts) : date('Y/m/d', $expiry_ts);
+
+                $is_expired = ($expiry_ts < time());
+                $status_text_expire = $is_expired ? 'منقضی' : 'معتبر';
+                $status_class_expire = $is_expired ? 'danger' : 'success';
+            } else {
+                $expire_date = '---';
+                $status_text_expire = 'نامشخص';
+                $status_class_expire = 'secondary';
+            }
+
+            // وضعیت فعال/غیرفعال
+            $status_active = $row->status === 'active' ? 'فعال' : 'غیرفعال';
+            $status_class_active = $row->status === 'active' ? 'success' : 'secondary';
+        ?>
+            <tr>
+                <td>
+                    <span class="badge bg-info text-dark copy-license" data-license="<?= esc_attr($row->license_code) ?>" style="cursor: pointer;">
+                        <?= esc_html($license_short) ?>
+                    </span>
+                </td>
+                <td><?= esc_html($user->display_name ?? 'نامشخص') ?></td>
+                <td><?= esc_html($product) ?></td>
+                <td><?= esc_html($created_date) ?></td>
+                <td><?= esc_html($expire_date) ?></td>
+
+                <td>
+                    <span class="badge bg-<?= esc_attr($status_class_active) ?> toggle-status" data-id="<?= esc_attr($row->id) ?>" data-status="<?= esc_attr($row->status) ?>" style="cursor:pointer;">
+                        <?= esc_html($status_active) ?>
+                    </span>
+                </td>
+
+                <td>
+                    <span class="badge bg-<?= esc_attr($status_class_expire) ?>">
+                        <?= esc_html($status_text_expire) ?>
+                    </span>
+                </td>
+
+                <td>
+                    <button class="btn btn-sm btn-outline-danger delete-license" data-id="<?= esc_attr($row->id) ?>"><i class="fa fa-trash"></i></button>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
 </div>
+
+<script>
+jQuery(function($) {
+    // کپی کد لایسنس
+    $('.copy-license').on('click', function () {
+        navigator.clipboard.writeText($(this).data('license')).then(() => {
+            alert('کد لایسنس کپی شد');
+        });
+    });
+
+    // تغییر وضعیت فعال/غیرفعال
+    $('.toggle-status').on('click', function () {
+        const el = $(this);
+        const id = el.data('id');
+        const currentStatus = el.data('status');
+        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+
+        $.post(ajaxurl, {
+            action: 'lm_toggle_license_status',
+            license_id: id,
+            new_status: newStatus,
+            _ajax_nonce: '<?= $nonce_toggle ?>'
+        }, function (res) {
+            if (res.success) {
+                location.reload();
+            } else {
+                alert('خطا در تغییر وضعیت');
+            }
+        });
+    });
+
+    // حذف لایسنس
+    $('.delete-license').on('click', function () {
+        if (!confirm('آیا از حذف این لایسنس مطمئن هستید؟')) return;
+        const id = $(this).data('id');
+        $.post(ajaxurl, {
+            action: 'lm_delete_license',
+            license_id: id,
+            _ajax_nonce: '<?= $nonce_delete ?>'
+        }, function (res) {
+            if (res.success) {
+                location.reload();
+            } else {
+                alert('خطا در حذف');
+            }
+        });
+    });
+});
+</script>

@@ -1,82 +1,88 @@
 <?php
 /**
  * Plugin Name: License Manager
- * Plugin URI: https://zarinafzar.com
- * Description: A flexible license management plugin to generate, validate, and manage activation codes for WooCommerce products with full REST API support.
- * Version: 1.0
- * Author: Ali Ramezani (Zarinafzar)
- * Author URI: https://aliram.ir
+ * Description: Advanced license key manager for WooCommerce products with REST API and activation hash logic.
+ * Version: 1.1
+ * Author: Ali Ramezani
+ * Author URI: https://zarinafzar.com
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: license-manager
- * Domain Path: /languages
  */
 
-defined('ABSPATH') || exit;
+if (!defined('ABSPATH')) exit;
 
-// تعریف ثابت‌ها برای مسیرها
-define('LM_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('LM_PLUGIN_URL', plugin_dir_url(__FILE__));
+// Define paths if not defined
+if (!defined('LM_PLUGIN_PATH')) define('LM_PLUGIN_PATH', plugin_dir_path(__FILE__));
+if (!defined('LM_PLUGIN_URL')) define('LM_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-// بررسی نصب بودن ووکامرس
+// Load translations
 add_action('plugins_loaded', function () {
-    if (!class_exists('WooCommerce')) {
-        add_action('admin_notices', function () {
-            echo '<div class="notice notice-error"><p><strong>License Manager:</strong> افزونه ووکامرس باید نصب و فعال باشد.</p></div>';
-        });
-        return;
-    }
-
-    // بارگذاری فایل‌های اصلی
-    require_once LM_PLUGIN_PATH . 'includes/enqueue.php';
-    require_once LM_PLUGIN_PATH . 'includes/functions.php';
-    require_once LM_PLUGIN_PATH . 'includes/license-generator.php';
-    require_once LM_PLUGIN_PATH . 'includes/license-api.php';
-    require_once LM_PLUGIN_PATH . 'includes/license-hooks.php';
-    require_once LM_PLUGIN_PATH . 'includes/user-registration.php';
-    require_once LM_PLUGIN_PATH . 'includes/woocommerce-hooks.php';
-
-    // بارگذاری صفحات مدیریت
-    require_once LM_PLUGIN_PATH . 'templates/admin-settings.php';
-    require_once LM_PLUGIN_PATH . 'templates/admin-user-registration.php';
-    require_once LM_PLUGIN_PATH . 'templates/admin-license-list.php';
-    require_once LM_PLUGIN_PATH . 'templates/admin-activation-codes.php';
-
-    // ایجاد جدول‌های لازم در نصب افزونه
-    register_activation_hook(__FILE__, 'lm_create_plugin_tables');
-
-    // بارگذاری ترجمه‌ها در صورت نیاز
     load_plugin_textdomain('license-manager', false, dirname(plugin_basename(__FILE__)) . '/languages');
 });
 
-// ساخت جدول‌های لازم در نصب اولیه افزونه
-function lm_create_plugin_tables() {
-    global $wpdb;
+// Includes
+require_once LM_PLUGIN_PATH . 'includes/enqueue.php';
+require_once LM_PLUGIN_PATH . 'includes/user-registration.php';
+require_once LM_PLUGIN_PATH . 'includes/license-generator.php';
+require_once LM_PLUGIN_PATH . 'includes/license-activation.php';
+require_once LM_PLUGIN_PATH . 'includes/license-api.php';
+require_once LM_PLUGIN_PATH . 'includes/license-hooks.php';
 
-    $charset_collate = $wpdb->get_charset_collate();
+require_once LM_PLUGIN_PATH . 'includes/jdf.php';
+require_once LM_PLUGIN_PATH . 'includes/date-format.php';
 
-    $licenses_table = $wpdb->prefix . 'lm_licenses';
-    $activation_table = $wpdb->prefix . 'lm_activation_codes';
+// Admin Menu
+add_action('admin_menu', function () {
+    add_menu_page('License Manager', 'مدیریت لایسنس', 'manage_options', 'lm_license_list', function () {
+        include LM_PLUGIN_PATH . 'templates/license-list-template.php';
+    }, 'dashicons-admin-network');
 
-    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    add_submenu_page('lm_license_list', 'تولید لایسنس', 'تولید لایسنس', 'manage_options', 'lm_license_generator', function () {
+        include LM_PLUGIN_PATH . 'templates/license-generator-template.php';
+    });
 
-    $sql1 = "CREATE TABLE IF NOT EXISTS $licenses_table (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        user_id BIGINT UNSIGNED NOT NULL,
-        product_id BIGINT UNSIGNED NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    ) $charset_collate;";
+    add_submenu_page('lm_license_list', 'تولید کد فعالسازی', 'کد فعالسازی', 'manage_options', 'lm_activation_generator', function () {
+        include LM_PLUGIN_PATH . 'templates/license-activation-generator-template.php';
+    });
 
-    $sql2 = "CREATE TABLE IF NOT EXISTS $activation_table (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        license_id BIGINT UNSIGNED NOT NULL,
-        system_code VARCHAR(255) NOT NULL,
-        activation_hash VARCHAR(255) NOT NULL,
-        domain VARCHAR(255),
-        expires_at DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    ) $charset_collate;";
+    add_submenu_page('lm_license_list', 'کدهای فعالسازی', 'کدهای فعالسازی', 'manage_options', 'lm_activation_list', function () {
+        include LM_PLUGIN_PATH . 'templates/license-activation-list-template.php';
+    });
 
-    dbDelta($sql1);
-    dbDelta($sql2);
+    add_submenu_page('lm_license_list', 'ثبت نام کاربر', 'ثبت نام کاربر', 'manage_options', 'lm_user_register', function () {
+        include LM_PLUGIN_PATH . 'templates/admin-user-registration.php';
+    });
+
+    add_submenu_page('lm_license_list', 'تنظیمات', 'تنظیمات', 'manage_options', 'lm_settings', function () {
+        include LM_PLUGIN_PATH . 'templates/settings-template.php';
+    });
+});
+
+// Create license table on activation
+if (!function_exists('lm_create_license_table')) {
+    function lm_create_license_table() {
+        global $wpdb;
+
+        $table_name = $wpdb->prefix . 'lm_licenses';
+        $charset_collate = $wpdb->get_charset_collate();
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+            id INT NOT NULL AUTO_INCREMENT,
+            user_id BIGINT(20) UNSIGNED NOT NULL,
+            product_id BIGINT(20) UNSIGNED NOT NULL,
+            license_code VARCHAR(255) NOT NULL,
+            status VARCHAR(20) DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            start_date DATETIME DEFAULT NULL,
+            expiry_date DATETIME DEFAULT NULL,
+            PRIMARY KEY (id)
+        ) $charset_collate;";
+
+        dbDelta($sql);
+    }
 }
+
+register_activation_hook(__FILE__, 'lm_create_license_table');

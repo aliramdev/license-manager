@@ -39,6 +39,40 @@ function lm_api_permission_check($request) {
     return true;
 }
 
-// این توابع callback فعالسازی، اعتبارسنجی، تمدید و لیست لایسنس‌ها را باید تعریف کنیم
-// (تعریف نمونه lm_api_activate_license و بقیه در includes/license-generator.php)
-    
+// Callback برای لیست لایسنس‌های کاربر بر اساس user_id
+function lm_api_list_user_licenses(WP_REST_Request $request) {
+    $params = $request->get_json_params();
+
+    if (empty($params['user_id'])) {
+        return new WP_Error('missing_user_id', 'user_id is required', ['status' => 400]);
+    }
+
+    $user_id = intval($params['user_id']);
+    if (!get_userdata($user_id)) {
+        return new WP_Error('invalid_user', 'Invalid user_id', ['status' => 404]);
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'lm_licenses';
+
+    $licenses = $wpdb->get_results($wpdb->prepare(
+        "SELECT id, license_code, product_id FROM $table_name WHERE user_id = %d AND status = 'active' ORDER BY id DESC",
+        $user_id
+    ));
+
+    if (!$licenses) {
+        return rest_ensure_response([]);
+    }
+
+    $result = [];
+    foreach ($licenses as $license) {
+        $product_name = get_the_title($license->product_id);
+        $result[] = [
+            'id' => $license->id,
+            'license_key' => $license->license_code,
+            'product_name' => $product_name,
+        ];
+    }
+
+    return rest_ensure_response($result);
+}
